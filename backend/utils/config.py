@@ -1,4 +1,4 @@
-﻿import os
+import os
 import shutil
 from pathlib import Path
 
@@ -17,12 +17,14 @@ MAX_SEGMENTS = 200
 CLEANUP_TTL_MINUTES = 30
 CLEANUP_INTERVAL_SECONDS = 5 * 60
 
-ALLOWED_ORIGINS = [
+_default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
 ]
+_env_origins = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [o.strip() for o in _env_origins.split(",") if o.strip()] if _env_origins else _default_origins
 
 
 def ensure_directories() -> None:
@@ -48,3 +50,4 @@ def get_ffmpeg_binary() -> str:
             return str(candidate)
 
     return "ffmpeg"
+
