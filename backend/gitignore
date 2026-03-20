@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyd
+*.whl
+.venv/
+
+# Dependencies cache
+.pydeps/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Environment
+.env
+frontend/.env
+
+# Runtime storage outputs
+storage/downloads/*
+storage/samples/*
+storage/exports/*
+!storage/downloads/.gitkeep
+!storage/samples/.gitkeep
+!storage/exports/.gitkeep
