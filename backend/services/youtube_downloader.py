@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import urlparse
@@ -21,6 +21,28 @@ class YouTubeDownloadError(RuntimeError):
     pass
 
 
+# iOS + mweb player clients work reliably from server IPs without cookies.
+_YDL_COMMON_OPTS: dict = {
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": True,
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["ios", "mweb"],
+        }
+    },
+    "http_headers": {
+        "User-Agent": (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+        ),
+    },
+    "retries": 5,
+    "extractor_retries": 5,
+    "socket_timeout": 30,
+}
+
+
 def validate_youtube_url(url: str) -> None:
     parsed = urlparse(url)
     host = (parsed.netloc or "").lower().split(":")[0]
@@ -33,10 +55,8 @@ def validate_youtube_url(url: str) -> None:
 
 def fetch_metadata(url: str) -> tuple[str, float]:
     options = {
-        "quiet": True,
+        **_YDL_COMMON_OPTS,
         "skip_download": True,
-        "noplaylist": True,
-        "no_warnings": True,
         "extract_flat": False,
     }
 
@@ -71,12 +91,10 @@ def download_audio(url: str, session_id: str, downloads_root: Path) -> tuple[Pat
 
     output_template = str(session_download_dir / f"{session_id}.%(ext)s")
     options = {
+        **_YDL_COMMON_OPTS,
         "format": "bestaudio/best",
         "outtmpl": output_template,
-        "quiet": True,
-        "noplaylist": True,
         "restrictfilenames": True,
-        "no_warnings": True,
         "overwrites": True,
     }
 
