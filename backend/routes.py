@@ -5,7 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
@@ -48,6 +48,21 @@ SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.post("/receive-cookies")
+async def receive_cookies(request: Request) -> dict[str, str]:
+    """Receive YouTube cookies from browser and store them for yt-dlp."""
+    import os
+    body = await request.body()
+    text = body.decode("utf-8", errors="replace").strip()
+    if not text or "youtube.com" not in text:
+        raise HTTPException(status_code=400, detail="Invalid cookie data.")
+    cookie_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "yt_cookies.txt")
+    with open(cookie_path, "w", encoding="utf-8") as f:
+        f.write(text + "\n")
+    os.environ["YOUTUBE_COOKIES_FILE"] = cookie_path
+    return {"status": "saved", "count": text.count(".youtube.com")}
 
 
 @router.post("/idea")

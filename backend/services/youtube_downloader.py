@@ -66,6 +66,15 @@ def _extract_video_id(url: str) -> str | None:
 
 
 def _write_cookies_file() -> str | None:
+    # 1. Check for file saved by /receive-cookies endpoint
+    saved_file = os.environ.get("YOUTUBE_COOKIES_FILE", "").strip()
+    if saved_file and os.path.isfile(saved_file):
+        return saved_file
+    # 2. Check for browser-received cookie file in project root
+    project_cookie = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "yt_cookies.txt")
+    if os.path.isfile(project_cookie):
+        return project_cookie
+    # 3. Fall back to env var with inline cookies
     if not YOUTUBE_COOKIES:
         return None
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
