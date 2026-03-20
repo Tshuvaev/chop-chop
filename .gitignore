@@ -25,3 +25,4 @@ storage/exports/*
 
 # Claude Code
 .claude/
+.vercel
