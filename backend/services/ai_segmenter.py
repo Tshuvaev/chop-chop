@@ -32,7 +32,8 @@ def detect_segments(
     max_segments: int = MAX_SEGMENTS,
 ) -> tuple[List[SampleSegment], float, float]:
     try:
-        audio, sample_rate = librosa.load(str(wav_path), sr=None, mono=True)
+        # 22050 Hz is sufficient for all analysis; halves memory vs 44/48 kHz originals
+        audio, sample_rate = librosa.load(str(wav_path), sr=22050, mono=True)
     except Exception as exc:  # noqa: BLE001
         raise SegmentationError("Failed to load WAV file for AI segmentation.") from exc
 
@@ -64,7 +65,8 @@ def detect_segments(
         clipping_ratio, is_clipping = _segment_clipping(audio, sample_rate, start, end)
         sound_type, sound_confidence, sound_candidates = classify_sound_segment(audio, sample_rate, start, end)
         segment_audio = _slice_audio(audio, sample_rate, start, end)
-        segment_bpm = detect_bpm(segment_audio, sample_rate) if segment_audio.size >= sample_rate else None
+        # Re-use global BPM per segment — per-segment beat_track is too expensive on server
+        segment_bpm = bpm if bpm and bpm > 0 else None
         seg_interest = interest_scores[index - 1] if (index - 1) < len(interest_scores) else None
         seg_is_dup = duplicate_flags[index - 1] if (index - 1) < len(duplicate_flags) else False
         sample_type = detect_sample_type(segment_audio, sample_rate) if segment_audio.size >= int(sample_rate * 0.3) else None
