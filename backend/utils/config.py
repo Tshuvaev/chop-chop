@@ -35,6 +35,10 @@ IDEA_EMAIL_TO = os.getenv("IDEA_EMAIL_TO", "lunatik125@gmail.com")
 IDEA_EMAIL_FROM = os.getenv("IDEA_EMAIL_FROM", "")
 IDEA_EMAIL_PASSWORD = os.getenv("IDEA_EMAIL_PASSWORD", "")
 
+# Netscape-format YouTube cookie file content (set via YOUTUBE_COOKIES env var).
+# Used to bypass YouTube's bot detection on cloud server IPs.
+YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES", "").strip()
+
 
 def ensure_directories() -> None:
     for path in (STORAGE_ROOT, DOWNLOADS_DIR, SAMPLES_DIR, EXPORTS_DIR):
