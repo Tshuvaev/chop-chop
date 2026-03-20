@@ -39,13 +39,15 @@ def _base_opts() -> dict:
         "noplaylist": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["ios", "mweb"],
+                # android_music / android tend to avoid sign-in walls on server IPs
+                "player_client": ["android_music", "android", "ios", "tv_embedded"],
+                "skip": ["translated_subs"],
             }
         },
         "http_headers": {
             "User-Agent": (
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+                "com.google.android.apps.youtube.music/7.16.52 (Linux; U; Android 13; "
+                "Pixel 7 Build/TQ3A.230901.001) gzip"
             ),
         },
         "retries": 5,
