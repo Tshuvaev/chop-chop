@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 import smtplib
@@ -84,43 +84,50 @@ def sound_categories() -> dict[str, object]:
     }
 
 
-@router.post("/analyze", response_model=AnalyzeResponse)
+@router.post("/analyze")
 async def analyze_video(
     payload: AnalyzeRequest,
     background_tasks: BackgroundTasks,
     x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
-) -> AnalyzeResponse:
+) -> dict[str, str]:
+    """Start analysis in the background and return immediately."""
     session_id = _resolve_session_id(x_session_id)
-
-    try:
-        title, duration, bpm, segments = await run_in_threadpool(_run_analysis_pipeline, payload.url, session_id)
-    except InvalidYouTubeUrlError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except VideoTooLongError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except (YouTubeDownloadError, AudioProcessingError, SegmentationError) as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected analysis error.") from exc
-
-    background_tasks.add_task(cleanup_storage, CLEANUP_TTL_MINUTES)
-
-    return AnalyzeResponse(
-        session_id=session_id,
-        title=title,
-        duration=round(duration, 3),
-        bpm=bpm,
-        audio_url=f"/session/{session_id}/audio",
-        segments=segments,
-    )
+    session_store.get_or_create(session_id)
+    session_store.update_progress(session_id, "queued", 1)
+    background_tasks.add_task(_run_analysis_pipeline_bg, payload.url, session_id)
+    return {"status": "started", "session_id": session_id}
 
 
 @router.get("/session/{session_id}/status")
 def session_status(session_id: str) -> dict[str, object]:
     session = session_store.get(session_id)
     if session is None:
-        return {"stage": "idle", "pct": 0}
-    return {"stage": session.progress_stage, "pct": session.progress_pct}
+        return {"stage": "idle", "pct": 0, "error": None}
+    return {
+        "stage": session.progress_stage,
+        "pct": session.progress_pct,
+        "error": session.error,
+    }
+
+
+@router.get("/session/{session_id}/result", response_model=AnalyzeResponse)
+def session_result(session_id: str) -> AnalyzeResponse:
+    session = session_store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+    if session.progress_stage == "error":
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=session.error or "Analysis failed.")
+    if session.progress_stage != "done":
+        raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Analysis still in progress.")
+
+    return AnalyzeResponse(
+        session_id=session_id,
+        title=session.title or "Untitled",
+        duration=round(session.duration, 3),
+        bpm=session.bpm,
+        audio_url=f"/session/{session_id}/audio",
+        segments=session.segments,
+    )
 
 
 @router.post("/export", response_model=ExportResponse)
@@ -191,8 +198,7 @@ async def export_single(
         start=start,
         end=end,
     )
-    segment_index = int(payload.segment.id or 1)
-    segment_index = max(1, segment_index)
+    segment_index = max(1, int(payload.segment.id or 1))
 
     try:
         sample_path = await run_in_threadpool(
@@ -251,34 +257,45 @@ def stream_session_audio(session_id: str) -> FileResponse:
     return FileResponse(path=session.wav_path, media_type="audio/wav", filename=f"{session_id}.wav")
 
 
-def _run_analysis_pipeline(url: str, session_id: str) -> tuple[str, float, float, list[SampleSegment]]:
-    purge_session_files(session_id)
-    session_store.update_progress(session_id, "downloading", 5)
+def _run_analysis_pipeline_bg(url: str, session_id: str) -> None:
+    """Background task: full analysis pipeline. Stores result in session_store."""
+    try:
+        purge_session_files(session_id)
+        session_store.update_progress(session_id, "downloading", 5)
 
-    downloaded_audio, title, downloaded_duration = download_audio(url=url, session_id=session_id, downloads_root=DOWNLOADS_DIR)
-    session_store.update_progress(session_id, "converting", 45)
+        downloaded_audio, title, downloaded_duration = download_audio(
+            url=url, session_id=session_id, downloads_root=DOWNLOADS_DIR
+        )
+        session_store.update_progress(session_id, "converting", 45)
 
-    wav_path = DOWNLOADS_DIR / session_id / "source.wav"
-    convert_to_wav(downloaded_audio, wav_path)
-    session_store.update_progress(session_id, "segmenting", 65)
+        wav_path = DOWNLOADS_DIR / session_id / "source.wav"
+        convert_to_wav(downloaded_audio, wav_path)
+        session_store.update_progress(session_id, "segmenting", 65)
 
-    segments, actual_duration, bpm = detect_segments(
-        wav_path=wav_path,
-        min_length=MIN_SEGMENT_SECONDS,
-        max_length=MAX_SEGMENT_SECONDS,
-    )
+        segments, actual_duration, bpm = detect_segments(
+            wav_path=wav_path,
+            min_length=MIN_SEGMENT_SECONDS,
+            max_length=MAX_SEGMENT_SECONDS,
+        )
 
-    session_store.save_analysis(
-        session_id=session_id,
-        source_url=url,
-        title=title,
-        wav_path=wav_path,
-        duration=downloaded_duration or actual_duration,
-        segments=segments,
-    )
-    session_store.update_progress(session_id, "done", 100)
+        session_store.save_analysis(
+            session_id=session_id,
+            source_url=url,
+            title=title,
+            wav_path=wav_path,
+            duration=downloaded_duration or actual_duration,
+            bpm=bpm,
+            segments=segments,
+        )
+        session_store.update_progress(session_id, "done", 100)
+        cleanup_storage(CLEANUP_TTL_MINUTES)
 
-    return title, downloaded_duration or actual_duration, bpm, segments
+    except (InvalidYouTubeUrlError, VideoTooLongError) as exc:
+        session_store.set_error(session_id, str(exc))
+    except (YouTubeDownloadError, AudioProcessingError, SegmentationError) as exc:
+        session_store.set_error(session_id, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        session_store.set_error(session_id, "Unexpected analysis error.")
 
 
 def _resolve_session_id(session_id: str | None) -> str:

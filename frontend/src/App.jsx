@@ -143,19 +143,9 @@ function App() {
     setProgressPct(0);
     stopPlayback();
 
-    progressPollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/session/${sessionId}/status`);
-        if (res.ok) {
-          const data = await res.json();
-          setProgressStage(data.stage || "idle");
-          setProgressPct(Number(data.pct || 0));
-        }
-      } catch {}
-    }, 1200);
-
     try {
-      const response = await fetch(`${API_BASE_URL}/analyze`, {
+      // 1. Start background analysis (returns immediately — no timeout)
+      const startRes = await fetch(`${API_BASE_URL}/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -164,16 +154,42 @@ function App() {
         body: JSON.stringify({ url: url.trim() }),
       });
 
-      if (!response.ok) {
-        throw new Error(await parseApiError(response));
+      if (!startRes.ok) {
+        throw new Error(await parseApiError(startRes));
       }
 
-      const data = await response.json();
-      setTitle(data.title || "Untitled");
-      setDuration(Number(data.duration || 0));
-      setBpm(data.bpm ?? null);
-      setSegments(data.segments || []);
-      setAudioPath(data.audio_url || "");
+      // 2. Poll status until done or error
+      await new Promise((resolve, reject) => {
+        progressPollRef.current = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`${API_BASE_URL}/session/${sessionId}/status`);
+            if (!statusRes.ok) return;
+            const data = await statusRes.json();
+            setProgressStage(data.stage || "idle");
+            setProgressPct(Number(data.pct || 0));
+
+            if (data.stage === "done") {
+              clearInterval(progressPollRef.current);
+              resolve();
+            } else if (data.stage === "error") {
+              clearInterval(progressPollRef.current);
+              reject(new Error(data.error || copy.failedAnalyze));
+            }
+          } catch {}
+        }, 1500);
+      });
+
+      // 3. Fetch result
+      const resultRes = await fetch(`${API_BASE_URL}/session/${sessionId}/result`);
+      if (!resultRes.ok) {
+        throw new Error(await parseApiError(resultRes));
+      }
+      const result = await resultRes.json();
+      setTitle(result.title || "Untitled");
+      setDuration(Number(result.duration || 0));
+      setBpm(result.bpm ?? null);
+      setSegments(result.segments || []);
+      setAudioPath(result.audio_url || "");
     } catch (requestError) {
       setSegments([]);
       setAudioPath("");

@@ -186,7 +186,7 @@ def detect_key(audio: np.ndarray, sample_rate: int) -> Optional[str]:
     if audio.size < int(sample_rate * 0.5):
         return None
     try:
-        chroma = librosa.feature.chroma_cqt(y=audio.astype(np.float32), sr=sample_rate)
+        chroma = librosa.feature.chroma_stft(y=audio.astype(np.float32), sr=sample_rate)
         chroma_mean = np.mean(chroma, axis=1)
         best_key: Optional[str] = None
         best_score = -np.inf

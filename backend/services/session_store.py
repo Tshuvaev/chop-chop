@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,9 +18,11 @@ class SessionData:
     title: Optional[str] = None
     wav_path: Optional[Path] = None
     duration: float = 0.0
+    bpm: Optional[float] = None
     segments: List[SampleSegment] = field(default_factory=list)
     progress_stage: str = "idle"
     progress_pct: int = 0
+    error: Optional[str] = None
 
 
 class SessionStore:
@@ -48,6 +50,7 @@ class SessionStore:
         title: str,
         wav_path: Path,
         duration: float,
+        bpm: Optional[float],
         segments: List[SampleSegment],
     ) -> SessionData:
         with self._lock:
@@ -60,9 +63,21 @@ class SessionStore:
             session.title = title
             session.wav_path = wav_path
             session.duration = duration
+            session.bpm = bpm
             session.segments = segments
             session.updated_at = datetime.now(timezone.utc)
             return session
+
+    def set_error(self, session_id: str, message: str) -> None:
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData(session_id=session_id)
+                self._sessions[session_id] = session
+            session.error = message
+            session.progress_stage = "error"
+            session.progress_pct = 0
+            session.updated_at = datetime.now(timezone.utc)
 
     def touch(self, session_id: str) -> None:
         with self._lock:
