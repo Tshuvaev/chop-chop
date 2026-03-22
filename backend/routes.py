@@ -58,7 +58,7 @@ async def receive_cookies(request: Request) -> dict[str, str]:
     text = body.decode("utf-8", errors="replace").strip()
     if not text or "youtube.com" not in text:
         raise HTTPException(status_code=400, detail="Invalid cookie data.")
-    cookie_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "yt_cookies.txt")
+    cookie_path = os.path.join(os.environ.get("TMPDIR", os.environ.get("TEMP", "/tmp")), "yt_cookies.txt")
     with open(cookie_path, "w", encoding="utf-8") as f:
         f.write(text + "\n")
     os.environ["YOUTUBE_COOKIES_FILE"] = cookie_path
