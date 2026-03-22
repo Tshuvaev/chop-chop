@@ -136,12 +136,21 @@ def _make_opts(
     if visitor_data:
         extractor_args["visitor_data"] = [visitor_data]
 
+    # Use Android UA for android clients, browser UA otherwise
+    is_android = any("android" in c for c in player_clients)
+    if is_android:
+        headers = {
+            "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip",
+        }
+    else:
+        headers = {**_BROWSER_HEADERS}
+
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "extractor_args": {"youtube": extractor_args},
-        "http_headers": {**_BROWSER_HEADERS},
+        "http_headers": headers,
         "retries": 3,
         "extractor_retries": 3,
         "socket_timeout": 30,
@@ -160,17 +169,16 @@ def _build_attempts(visitor_data: str | None, cookie_path: str | None) -> list[d
     """Return a list of yt-dlp option dicts to try in order."""
     attempts = []
 
-    # 1. Cookies + web client (best if cookies are available)
-    if cookie_path:
-        attempts.append(
-            _make_opts(
-                visitor_data=visitor_data,
-                cookie_path=cookie_path,
-                player_clients=["web", "mweb"],
-            )
+    # 1. Android clients first (most reliable, was working before)
+    attempts.append(
+        _make_opts(
+            visitor_data=visitor_data,
+            cookie_path=cookie_path,
+            player_clients=["android", "android_music", "mweb", "web_creator"],
         )
+    )
 
-    # 2. Web client without cookies (works if IP is not blocked)
+    # 2. Web client (works if IP is not blocked)
     attempts.append(
         _make_opts(
             visitor_data=visitor_data,
@@ -179,16 +187,7 @@ def _build_attempts(visitor_data: str | None, cookie_path: str | None) -> list[d
         )
     )
 
-    # 3. Android clients (different bot-detection path)
-    attempts.append(
-        _make_opts(
-            visitor_data=visitor_data,
-            cookie_path=cookie_path,
-            player_clients=["android", "android_music"],
-        )
-    )
-
-    # 4. tv_embedded + web_creator (minimal bot-detection)
+    # 3. tv_embedded (minimal bot-detection)
     attempts.append(
         _make_opts(
             visitor_data=visitor_data,
