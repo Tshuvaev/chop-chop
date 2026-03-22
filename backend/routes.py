@@ -62,7 +62,7 @@ async def receive_cookies(request: Request) -> dict[str, str]:
     with open(cookie_path, "w", encoding="utf-8") as f:
         f.write(text + "\n")
     os.environ["YOUTUBE_COOKIES_FILE"] = cookie_path
-    return {"status": "saved", "count": text.count(".youtube.com")}
+    return {"status": "saved", "count": str(text.count(".youtube.com"))}
 
 
 @router.post("/idea")
