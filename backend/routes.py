@@ -58,11 +58,33 @@ async def receive_cookies(request: Request) -> dict[str, str]:
     text = body.decode("utf-8", errors="replace").strip()
     if not text or "youtube.com" not in text:
         raise HTTPException(status_code=400, detail="Invalid cookie data.")
+    # Normalize line endings to LF for Linux
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     cookie_path = os.path.join(os.environ.get("TMPDIR", os.environ.get("TEMP", "/tmp")), "yt_cookies.txt")
-    with open(cookie_path, "w", encoding="utf-8") as f:
+    with open(cookie_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text + "\n")
     os.environ["YOUTUBE_COOKIES_FILE"] = cookie_path
     return {"status": "saved", "count": str(text.count(".youtube.com"))}
+
+
+@router.get("/debug-cookies")
+def debug_cookies() -> dict[str, str]:
+    """Check cookie file status."""
+    import os
+    cookie_file = os.environ.get("YOUTUBE_COOKIES_FILE", "")
+    exists = os.path.isfile(cookie_file) if cookie_file else False
+    size = os.path.getsize(cookie_file) if exists else 0
+    yt_env = "set" if os.environ.get("YOUTUBE_COOKIES", "").strip() else "empty"
+    # Also check project-level cookie file
+    project_cookie = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "yt_cookies.txt")
+    proj_exists = os.path.isfile(project_cookie)
+    return {
+        "cookie_file_env": cookie_file,
+        "file_exists": str(exists),
+        "file_size": str(size),
+        "youtube_cookies_env": yt_env,
+        "project_cookie_exists": str(proj_exists),
+    }
 
 
 @router.post("/idea")
